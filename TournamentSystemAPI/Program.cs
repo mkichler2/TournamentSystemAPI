@@ -43,7 +43,6 @@ var app = builder.Build();
 
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapGet("/", () => "Tournament System API is running, http://localhost:5000/graphql");
 app.MapGraphQL();
 
