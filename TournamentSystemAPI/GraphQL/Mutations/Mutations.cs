@@ -2,9 +2,10 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using HotChocolate;
-// Używamy oryginalnego atrybutu z biblioteki, nie lokalnej podróbki
-using HotChocolate.AspNetCore.Authorization; 
+using HotChocolate.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using TournamentSystemAPI.Data;
 using TournamentSystemAPI.Models;
@@ -24,35 +25,60 @@ namespace TournamentSystemAPI.GraphQL.Mutations
             {
                 FirstName = firstName,
                 LastName = lastName,
-                Email = email,
-                Password = password // Plain text zgodnie z Twoim komentarzem "as requested"
+                Email = email
             };
+
+            var hasher = new PasswordHasher<User>();
+            user.Password = hasher.HashPassword(user, password);
 
             context.Users.Add(user);
             await context.SaveChangesAsync();
-            return user;
+
+            // Create response without password hash
+            return new User
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email
+            };
         }
 
         public async Task<string> Login(string email, string password, [Service] AppDbContext context, [Service] IConfiguration config)
         {
-            var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email && u.Password == password);
-            if (user == null) throw new Exception("Invalid credentials");
+            var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null) 
+                throw new Exception("Invalid credentials");
 
-            var key = config["Jwt:Key"] ?? throw new Exception("JWT Key missing");
-            var claims = new[]
+            var hasher = new PasswordHasher<User>();
+            if (user.Password == null)
+                throw new Exception("Invalid credentials");
+                
+            var verify = hasher.VerifyHashedPassword(user, user.Password, password);
+            if (verify == PasswordVerificationResult.Failed) 
+                throw new Exception("Invalid credentials");
+
+            var key = config["Jwt:Key"];
+            if (string.IsNullOrEmpty(key))
+                throw new Exception("JWT Key is not configured");
+            
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.Email!)
+                new Claim(ClaimTypes.Name, user.Email ?? "")
             };
 
-            var creds = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256);
+            var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
+            var creds = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
+            
             var token = new JwtSecurityToken(
                 claims: claims,
                 expires: DateTime.UtcNow.AddDays(7),
                 signingCredentials: creds
             );
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            return await Task.FromResult(tokenString);
         }
 
         // --- Metody z diagramu klas (jako Mutacje) ---
@@ -85,6 +111,8 @@ namespace TournamentSystemAPI.GraphQL.Mutations
                 .FirstOrDefaultAsync(t => t.Id == tournamentId);
 
             if (tournament == null) throw new Exception("Tournament not found");
+                if (tournament.Status != "NotStarted") 
+                    throw new Exception("Cannot generate bracket for started tournament");
             if (tournament.Bracket != null) throw new Exception("Bracket already exists");
             if (tournament.Participants.Count < 2) throw new Exception("Not enough participants");
 
@@ -108,7 +136,14 @@ namespace TournamentSystemAPI.GraphQL.Mutations
             context.Brackets.Add(bracket);
             tournament.Bracket = bracket;
             await context.SaveChangesAsync();
-            return bracket;
+            
+            // Reload bracket with matches and players
+            return await context.Brackets
+                .Include(b => b.Matches)
+                    .ThenInclude(m => m.Player1)
+                .Include(b => b.Matches)
+                    .ThenInclude(m => m.Player2)
+                .FirstOrDefaultAsync(b => b.Id == bracket.Id) ?? bracket;
         }
 
         // Diagram: Tournament.start()
@@ -143,7 +178,11 @@ namespace TournamentSystemAPI.GraphQL.Mutations
         // Diagram: Match.play(winner)
         public async Task<Match> PlayMatch(int matchId, int winnerId, [Service] AppDbContext context)
         {
-            var match = await context.Matches.FirstOrDefaultAsync(m => m.Id == matchId);
+            var match = await context.Matches
+                .Include(m => m.Player1)
+                .Include(m => m.Player2)
+                .Include(m => m.Winner)
+                .FirstOrDefaultAsync(m => m.Id == matchId);
             if (match == null) throw new Exception("Match not found");
 
             if (match.Player1Id != winnerId && match.Player2Id != winnerId)
@@ -153,7 +192,13 @@ namespace TournamentSystemAPI.GraphQL.Mutations
             // Tutaj można dodać logikę awansu do kolejnej rundy, ale polecenie prosi o prostotę ("niezwykle prostym narzędziem")
             
             await context.SaveChangesAsync();
-            return match;
+            
+            // Reload to ensure all related data is loaded
+            return await context.Matches
+                .Include(m => m.Player1)
+                .Include(m => m.Player2)
+                .Include(m => m.Winner)
+                .FirstOrDefaultAsync(m => m.Id == matchId) ?? match;
         }
 
         // Diagram: Bracket.getMatchesForRound(round)
@@ -162,6 +207,9 @@ namespace TournamentSystemAPI.GraphQL.Mutations
         {
              return await context.Matches
                 .Include(m => m.Bracket)
+                .Include(m => m.Player1)
+                .Include(m => m.Player2)
+                .Include(m => m.Winner)
                 .Where(m => m.Bracket!.TournamentId == tournamentId && m.Round == round)
                 .ToListAsync();
         }

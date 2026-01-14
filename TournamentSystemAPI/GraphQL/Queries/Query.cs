@@ -1,21 +1,28 @@
 using System.Security.Claims;
 using HotChocolate;
-using HotChocolate.AspNetCore.Authorization;
+using HotChocolate.Authorization;
 using TournamentSystemAPI.Data;
 using TournamentSystemAPI.Models;
 using Microsoft.EntityFrameworkCore;
+
 
 namespace TournamentSystemAPI.GraphQL.Queries
 {
     public class Query
     {
-        // Public!!
-        public IQueryable<Tournament> GetTournaments([Service] AppDbContext context) 
-    => context.Tournaments
-        .Include(t => t.Bracket)
-            .ThenInclude(b => b.Matches)
-                .ThenInclude(m => m.Winner)
-        .Include(t => t.Participants);
+    // Public!!
+    public IQueryable<Tournament> GetTournaments([Service] AppDbContext context) 
+        => context.Tournaments
+            .Include(t => t.Bracket!)
+                .ThenInclude(b => b.Matches)
+                    .ThenInclude(m => m.Player1)
+            .Include(t => t.Bracket!)
+                .ThenInclude(b => b.Matches)
+                    .ThenInclude(m => m.Player2)
+            .Include(t => t.Bracket!)
+                .ThenInclude(b => b.Matches)
+                    .ThenInclude(m => m.Winner)
+            .Include(t => t.Participants);
 
         // Użytkownik po zalogowaniu się ma możliwość pobrania informacji o swoich meczach
         [Authorize]
@@ -28,7 +35,11 @@ namespace TournamentSystemAPI.GraphQL.Queries
                 return Enumerable.Empty<Match>().AsQueryable();
             }
 
-            return context.Matches.Where(m => m.Player1Id == userId || m.Player2Id == userId);
+            return context.Matches
+                .Include(m => m.Player1)
+                .Include(m => m.Player2)
+                .Include(m => m.Winner)
+                .Where(m => m.Player1Id == userId || m.Player2Id == userId);
         }
     }
 }

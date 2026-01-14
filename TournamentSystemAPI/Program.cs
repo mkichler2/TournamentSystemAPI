@@ -6,6 +6,8 @@ using TournamentSystemAPI.Data;
 using TournamentSystemAPI.GraphQL.Mutations;
 using TournamentSystemAPI.GraphQL.Queries;
 
+
+
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
@@ -35,7 +37,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 
 // GraphQL Server configuration
-builder.Services.AddGraphQLServer()
+builder.Services
+    .AddGraphQLServer()
+    .AddAuthorization()
     .AddQueryType<Query>()
     .AddMutationType<Mutations>();
 
