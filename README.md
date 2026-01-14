@@ -58,7 +58,7 @@ mutation Rejestracja {
     lastName
     email
   }
-  u2: register(firstName: "Paweł", lastName: "Pawłowski", email: "pawel@game.com", password: "123") {
+  u2: register(firstName: "Paweł", lastName: "Pawłowski", email: "pawel@test.com", password: "123") {
     id
     firstName
     lastName
