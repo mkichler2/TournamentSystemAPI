@@ -293,7 +293,6 @@ Model bazy danych oparty na diagramie UML zawiera następujące encje:
 
 ## Bezpieczeństwo
 
-- **Haszowanie haseł** - hasła przechowywane z użyciem `PasswordHasher<User>`
 - **JWT Bearer** - tokeny ważne 7 dni
 - **Autoryzacja GraphQL** - atrybut `[Authorize]` na metodach wymagających zalogowania
 - **Bezpieczne pobieranie danych** - użytkownik pobiera tylko swoje dane na podstawie tokenu, nie musi podawać ID
