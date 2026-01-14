@@ -9,7 +9,7 @@ namespace TournamentSystemAPI.GraphQL.Queries
 {
     public class Query
     {
-        // Publiczny dostęp do turniejów
+        // Public!!
         public IQueryable<Tournament> GetTournaments([Service] AppDbContext context) 
     => context.Tournaments
         .Include(t => t.Bracket)
@@ -17,7 +17,7 @@ namespace TournamentSystemAPI.GraphQL.Queries
                 .ThenInclude(m => m.Winner)
         .Include(t => t.Participants);
 
-        // Użytkownik po zalogowaniu się ma możliwość pobrania informacji o swoich meczach"
+        // Użytkownik po zalogowaniu się ma możliwość pobrania informacji o swoich meczach
         [Authorize]
         public IQueryable<Match> GetMyMatches([Service] AppDbContext context, [Service] IHttpContextAccessor httpContextAccessor)
         {
